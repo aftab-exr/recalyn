@@ -1,0 +1,37 @@
+name: Render Keep-Alive Ping
+
+on:
+  schedule:
+    # Runs every 14 minutes between 02:00 and 18:59 UTC (07:30 AM – 12:29 AM IST)
+    # Keeps Render's 750 free monthly instance hours well within budget while staying warm all day
+    - cron: '*/14 2-18 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-health:
+    name: Ping Render /health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check RENDER_HEALTH_URL secret
+        id: check
+        env:
+          HEALTH_URL: ${{ secrets.RENDER_HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "RENDER_HEALTH_URL secret is not set yet; skipping ping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wake Render instance
+        if: steps.check.outputs.configured == 'true'
+        env:
+          HEALTH_URL: ${{ secrets.RENDER_HEALTH_URL }}
+        run: |
+          echo "Pinging $HEALTH_URL..."
+          HTTP_STATUS=$(curl -sS -o /tmp/health.json -w "%{http_code}" --max-time 60 "$HEALTH_URL")
+          echo "HTTP Status: $HTTP_STATUS"
+          cat /tmp/health.json
+          test "$HTTP_STATUS" -eq 200
