@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StatusBar,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useFonts } from 'expo-font';
 import {
   BricolageGrotesque_600SemiBold,
@@ -12,11 +23,18 @@ import {
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 
 import {
+  DEFAULT_API_BASE_URL,
   deleteDeckApi,
   fetchDecks,
   fetchGrade,
+  getApiBaseUrl,
+  initApiBaseUrl,
+  isApiUrlOverridden,
+  resetApiBaseUrlOverride,
+  setApiBaseUrlOverride,
   syncCardRating,
   syncQuizScore,
+  testServerHealth,
 } from './src/config/api';
 import { PrintMode, RisoTheme } from './src/theme/risograph';
 import {
@@ -25,6 +43,7 @@ import {
   INITIAL_DECKS,
   StudyDeck,
 } from './src/types/study';
+import { RisoBadge, RisoButton, RisoCard } from './src/components/RisoPrimitives';
 import { PressDeskScreen } from './src/screens/PressDeskScreen';
 import { FlashcardDrumScreen, ReviewQueueCard } from './src/screens/FlashcardDrumScreen';
 import { DailyQuizScreen } from './src/screens/DailyQuizScreen';
@@ -53,6 +72,13 @@ export default function App() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const [route, setRoute] = useState<ActiveRoute>({ name: 'desk' });
 
+  // Server URL modal state
+  const [serverModalVisible, setServerModalVisible] = useState(false);
+  const [urlDraft, setUrlDraft] = useState(DEFAULT_API_BASE_URL);
+  const [hasCustomUrl, setHasCustomUrl] = useState(false);
+  const [testingUrl, setTestingUrl] = useState(false);
+  const [probeStatus, setProbeStatus] = useState<{ ok: boolean; text: string } | null>(null);
+
   const t = RisoTheme[mode];
 
   const loadFromBackend = useCallback(async () => {
@@ -76,7 +102,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadFromBackend();
+    let mounted = true;
+    (async () => {
+      const { url, isOverride } = await initApiBaseUrl();
+      if (!mounted) return;
+      setUrlDraft(url);
+      setHasCustomUrl(isOverride);
+      await loadFromBackend();
+    })();
+    return () => {
+      mounted = false;
+    };
   }, [loadFromBackend]);
 
   const grade = useMemo(
@@ -95,6 +131,49 @@ export default function App() {
   );
 
   if (!fontsLoaded) return null;
+
+  const openServerModal = () => {
+    setUrlDraft(getApiBaseUrl());
+    setHasCustomUrl(isApiUrlOverridden());
+    setProbeStatus(null);
+    setServerModalVisible(true);
+  };
+
+  const handleTestServerUrl = async () => {
+    setTestingUrl(true);
+    setProbeStatus(null);
+    try {
+      await testServerHealth(urlDraft);
+      setProbeStatus({ ok: true, text: 'HEALTH CHECK PASSED (200 OK)' });
+    } catch (err: any) {
+      setProbeStatus({ ok: false, text: err.message || 'CONNECTION FAILED' });
+    } finally {
+      setTestingUrl(false);
+    }
+  };
+
+  const handleSaveServerUrl = async () => {
+    try {
+      const saved = await setApiBaseUrlOverride(urlDraft);
+      setUrlDraft(saved);
+      setHasCustomUrl(true);
+      setServerModalVisible(false);
+      setLoadingInitial(true);
+      await loadFromBackend();
+    } catch (err: any) {
+      setProbeStatus({ ok: false, text: err.message || 'INVALID URL' });
+    }
+  };
+
+  const handleResetServerUrl = async () => {
+    const restored = await resetApiBaseUrlOverride();
+    setUrlDraft(restored);
+    setHasCustomUrl(false);
+    setProbeStatus(null);
+    setServerModalVisible(false);
+    setLoadingInitial(true);
+    await loadFromBackend();
+  };
 
   const refreshGradeOnly = async () => {
     const updatedGrade = await fetchGrade();
@@ -200,28 +279,198 @@ export default function App() {
           Recalyn
         </Text>
 
-        <Pressable
-          onPress={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))}
-          style={{
-            borderWidth: 2,
-            borderColor: t.primary,
-            backgroundColor: t.secondary,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: RisoTheme.radius.md,
-          }}
-        >
-          <Text
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={openServerModal}
             style={{
-              fontFamily: RisoTheme.fonts.monoMedium,
-              fontSize: 11,
-              color: t.secondaryForeground,
+              borderWidth: 2,
+              borderColor: t.primary,
+              backgroundColor: hasCustomUrl ? t.primary : t.card,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: RisoTheme.radius.md,
             }}
           >
-            {mode === 'light' ? 'DARK' : 'LIGHT'}
-          </Text>
-        </Pressable>
+            <Text
+              style={{
+                fontFamily: RisoTheme.fonts.monoMedium,
+                fontSize: 11,
+                color: hasCustomUrl ? t.primaryForeground : t.foreground,
+              }}
+            >
+              {hasCustomUrl ? 'API*' : 'API'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))}
+            style={{
+              borderWidth: 2,
+              borderColor: t.primary,
+              backgroundColor: t.secondary,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: RisoTheme.radius.md,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: RisoTheme.fonts.monoMedium,
+                fontSize: 11,
+                color: t.secondaryForeground,
+              }}
+            >
+              {mode === 'light' ? 'DARK' : 'LIGHT'}
+            </Text>
+          </Pressable>
+        </View>
       </View>
+
+      <Modal
+        visible={serverModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setServerModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(18, 17, 16, 0.72)',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <RisoCard mode={mode} offset={8}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <RisoBadge
+                label={hasCustomUrl ? 'CUSTOM OVERRIDE ACTIVE' : 'BUILD DEFAULT'}
+                mode={mode}
+                tone={hasCustomUrl ? 'primary' : 'secondary'}
+              />
+              <Pressable onPress={() => setServerModalVisible(false)} hitSlop={8}>
+                <Text
+                  style={{
+                    fontFamily: RisoTheme.fonts.monoMedium,
+                    fontSize: 12,
+                    color: t.primary,
+                    textDecorationLine: 'underline',
+                  }}
+                >
+                  CLOSE
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text
+              style={{
+                fontFamily: RisoTheme.fonts.display,
+                fontSize: 22,
+                lineHeight: 28,
+                color: t.foreground,
+                marginBottom: 6,
+              }}
+            >
+              Backend Server URL
+            </Text>
+
+            <Text
+              style={{
+                fontFamily: RisoTheme.fonts.body,
+                fontSize: 14,
+                lineHeight: 20,
+                color: t.mutedForeground,
+                marginBottom: 14,
+              }}
+            >
+              Switch between your local Wi-Fi LAN IP and a deployed HTTPS FastAPI endpoint without rebuilding the APK.
+            </Text>
+
+            <TextInput
+              value={urlDraft}
+              onChangeText={(val) => {
+                setUrlDraft(val);
+                if (probeStatus) setProbeStatus(null);
+              }}
+              placeholder="http://192.168.1.10:8000"
+              placeholderTextColor={t.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              style={{
+                height: 44,
+                backgroundColor: t.background,
+                borderWidth: 2,
+                borderColor: t.primary,
+                borderRadius: RisoTheme.radius.md,
+                paddingHorizontal: 12,
+                fontFamily: RisoTheme.fonts.mono,
+                fontSize: 13,
+                color: t.foreground,
+                marginBottom: 8,
+              }}
+            />
+
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: RisoTheme.fonts.mono,
+                fontSize: 11,
+                color: t.mutedForeground,
+                marginBottom: 12,
+              }}
+            >
+              DEFAULT: {DEFAULT_API_BASE_URL}
+            </Text>
+
+            {probeStatus && (
+              <View style={{ marginBottom: 12 }}>
+                <RisoBadge
+                  label={probeStatus.text}
+                  mode={mode}
+                  tone={probeStatus.ok ? 'success' : 'destructive'}
+                />
+              </View>
+            )}
+
+            <View style={{ gap: 10 }}>
+              <RisoButton
+                label={testingUrl ? 'TESTING /HEALTH...' : 'TEST CONNECTION'}
+                mode={mode}
+                variant="secondary"
+                disabled={testingUrl}
+                onPress={handleTestServerUrl}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {hasCustomUrl && (
+                  <RisoButton
+                    label="RESET"
+                    mode={mode}
+                    variant="destructive"
+                    style={{ flex: 1 }}
+                    onPress={handleResetServerUrl}
+                  />
+                )}
+                <RisoButton
+                  label="SAVE & RELOAD"
+                  mode={mode}
+                  variant="primary"
+                  style={{ flex: 2 }}
+                  onPress={handleSaveServerUrl}
+                />
+              </View>
+            </View>
+          </RisoCard>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {route.name === 'desk' && (
         <PressDeskScreen
