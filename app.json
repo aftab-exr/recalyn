@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "recalyn",
+    "name": "Recalyn",
     "slug": "recalyn",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,10 +11,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#5B21B6"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.aftabexr.recalyn",
@@ -39,6 +38,10 @@
       "eas": {
         "projectId": "bf8c4f4a-3bdc-464e-93fb-d70e4cdfb7f6"
       }
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#5B21B6"
     }
   }
 }

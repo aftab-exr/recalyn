@@ -4,6 +4,13 @@
 
 Cross-platform React Native (Expo) and Python (FastAPI) study application that converts PDF lecture notes into structured flashcard decks, difficulty-weighted daily quizzes, weak-card review queues, and a composite course grade.
 
+## Download Android App
+
+[![Download recalyn.apk](https://img.shields.io/badge/Download-recalyn.apk-5B21B6?style=for-the-badge&logo=android&logoColor=white)](https://github.com/aftab-exr/recalyn/releases/latest/download/recalyn.apk)
+
+* **Direct APK Download:** [`recalyn.apk`](https://github.com/aftab-exr/recalyn/releases/latest/download/recalyn.apk)
+* **Installation:** Open the downloaded `recalyn.apk` on your Android device and allow installation from your browser/file manager if prompted.
+
 ## Architecture
 
 ```text
